@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 # include <stdio.h>
 # include <string.h>
 # include <unistd.h>
@@ -15,23 +16,28 @@ void print_error(){
 
 /* check whether we are starting a new process*/
 int check_ps(char ** input_ptr, int arg_num){
-  char * tmp = *(input_ptr + arg_num -1);
-  if (0 == strcmp(tmp, "&")){
-    //?????????
-    //the following statement doesn't chagne *(input_ptr + argnum -1) to '\0'
-    //    *tmp = '\0';
-    *(input_ptr + arg_num -1)='\0';
-    //    strncpy(tmp,"\0",1);
-    return 1;
-  } else
+  if ( 1 <= arg_num){
+    char * tmp = *(input_ptr + arg_num -1);
+    if (0 == strcmp(tmp, "&")){
+      //?????????
+      //the following statement doesn't chagne *(input_ptr + argnum -1) to '\0'
+      //    *tmp = '\0';
+      *(input_ptr + arg_num -1)='\0';
+      return 1;
+    } else
+      return 0;
+  } else {
     return 0;
+  }
 }
 
-void call_bin(char ** input_ptr, int arg_num){
+/*create a new process and call the binary*/
+void call_bin(char ** input_ptr, int b_ps){
   char* bin_name_ptr;
   bin_name_ptr=*(input_ptr);
-  int separate_ps= check_ps(input_ptr,arg_num);
+  //  int separate_ps= check_ps(input_ptr,arg_num);
   int rc=fork();
+  //  printf("created child process id: %d\n",rc);
   if ( 0 ==rc){
     //child execute
     int result=execvp(bin_name_ptr,input_ptr);
@@ -41,37 +47,47 @@ void call_bin(char ** input_ptr, int arg_num){
     }
   } else if ( 0 < rc) {
     //parent execute
-    if (1 != separate_ps)
-      (void)wait(NULL);
+    if (1 != b_ps){
+      //use waitpid to wait for the particular process just created
+      (void)waitpid(rc,NULL,0);
+      //printf("waited children pid: %d\n",c_pid);
+    }
   } else {
     char error_message[30] = "An error has occurred\n";
     write(STDERR_FILENO, error_message, strlen(error_message));
   }
 }
 
-
-int check_redict(char* input){
-  char* token = strtok(input, ">");
-  if (NULL != token){
-    input=token;
-  }
+/*check whether there is redict simple in the input.
+  if do, then strip off the file name redirected into
+  and redirect stdout, return 1
+*/
+int check_redict(char** input){
+  int offset=0;
+  int red_s_num=0;
   char out_file[513]={0};
-  int num=0;
-  while ((token=strtok(NULL," ")) != NULL){
-    /* if (0==num){ */
-    /*   del_NL(token); */
-    /* } */
-    strcpy(out_file,token);
-    //    out_file = token;
-    num++;
+  int find_outfile=0;
+  //record the offset to get rid of 
+  int red_s_offset=-1;
+  while (NULL != *(input+offset)){
+    if ((0==find_outfile) && (1 == red_s_num)){
+      strcpy(out_file,*(input+offset));
+      find_outfile=1;
+      red_s_offset=offset-1;
+    }
+    if (0==strcmp(*(input+offset),">")){
+      red_s_num++;
+    }
+    offset++;
   }
-  if (1 == num){
+  if (1 == red_s_num){
     //redirect. Do we overwrite or append?
     freopen(out_file, "a+", stdout);
+    *(input+red_s_offset)='\0';
     return 1;
     //    close(STDOUT_FILENO);
     //    int fd=open(out_file, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
-  } else if ( 1 < num ){
+  } else if ( 1 < red_s_num ){
     //more than one ">"
     print_error();
   }
@@ -79,8 +95,7 @@ int check_redict(char* input){
 }
 
 void close_redirect(int redirect){
-  //  (void)close(1);
-  //forcefullly redirect everything onto the screen
+  //forcefullly redirect everything onto the console screen
   if (1== redirect){
     freopen ("/dev/tty", "a+", stdout);
   }
@@ -105,10 +120,10 @@ void del_NL(char* ori){
 int main (int argc, char *argv[]){
   while (1){
     fprintf(stdout,"mysh>");
-    char input[513];
+    char input[513]={0};
     if (NULL != fgets(input,512,stdin)){
       del_NL(input);
-      int redirect=check_redict(input);
+
       char* token = strtok(input, " ");
       char** s_args=(char **)calloc(512,sizeof(char*));
       char** args=s_args;
@@ -119,6 +134,9 @@ int main (int argc, char *argv[]){
         arg_num++;
 	token=strtok(NULL," ");
       }
+
+      const int b_ps=check_ps(s_args,arg_num);
+      const int redirect=check_redict(s_args);
 
       //handle build-in
       args=s_args;
@@ -157,7 +175,7 @@ int main (int argc, char *argv[]){
 	(void) wait(NULL);
       } else {
         //hanlde non-build in. Calling program binaries
-        (void)call_bin(args,arg_num);
+        (void)call_bin(args,b_ps);
       }
       free(s_args);
       close_redirect(redirect);
