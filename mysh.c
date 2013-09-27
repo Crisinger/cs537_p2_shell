@@ -15,14 +15,15 @@ void print_error(){
 }
 
 /* check whether we are starting a new process*/
-int check_ps(char ** input_ptr, int arg_num){
-  if ( 1 <= arg_num){
-    char * tmp = *(input_ptr + arg_num -1);
+int check_ps(char ** input_ptr, int* arg_num_ptr){
+  if ( 1 <= *arg_num_ptr){
+    char * tmp = *(input_ptr + *arg_num_ptr -1);
     if (0 == strcmp(tmp, "&")){
       //?????????
       //the following statement doesn't chagne *(input_ptr + argnum -1) to '\0'
       //    *tmp = '\0';
-      *(input_ptr + arg_num -1)='\0';
+      *(input_ptr + *arg_num_ptr -1)='\0';
+      (*arg_num_ptr)--;
       return 1;
     } else
       return 0;
@@ -62,7 +63,7 @@ void call_bin(char ** input_ptr, int b_ps){
   if do, then strip off the file name redirected into
   and redirect stdout, return 1
 */
-int check_redict(char** input){
+int check_redict(char** input, int* arg_num_ptr){
   int offset=0;
   int red_s_num=0;
   char out_file[513]={0};
@@ -82,8 +83,9 @@ int check_redict(char** input){
   }
   if (1 == red_s_num){
     //redirect. Do we overwrite or append?
-    freopen(out_file, "a+", stdout);
+    freopen(out_file, "w", stdout);
     *(input+red_s_offset)='\0';
+    *arg_num_ptr = *arg_num_ptr-2;
     return 1;
     //    close(STDOUT_FILENO);
     //    int fd=open(out_file, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
@@ -121,7 +123,7 @@ int main (int argc, char *argv[]){
   while (1){
     fprintf(stdout,"mysh>");
     char input[513]={0};
-    if (NULL != fgets(input,512,stdin)){
+    if (NULL != fgets(input,513,stdin)){
       del_NL(input);
 
       char* token = strtok(input, " ");
@@ -135,8 +137,8 @@ int main (int argc, char *argv[]){
 	token=strtok(NULL," ");
       }
 
-      const int b_ps=check_ps(s_args,arg_num);
-      const int redirect=check_redict(s_args);
+      const int b_ps=check_ps(s_args,&arg_num);
+      const int redirect=check_redict(s_args,&arg_num);
 
       //handle build-in
       args=s_args;
@@ -173,6 +175,17 @@ int main (int argc, char *argv[]){
       } else if (0 == strcmp (*args, "wait")){
 	//???????????? handle status of waiting for children process???
 	(void) wait(NULL);
+      } else if (0 == strcmp(*args+strlen(*args)-3,".py")){ // fun feature
+        int offset=arg_num-1;
+        char extraSpace[strlen(*(args+offset))];
+        //allocate space for "python" string
+        *(args + arg_num) = &extraSpace[0];
+        for (;offset>=0;offset--){
+          strcpy(*(args+offset+1),*(args+offset));
+        }
+        //add "python in"
+        strcpy(*args,"python");
+        (void)call_bin(args,b_ps);
       } else {
         //hanlde non-build in. Calling program binaries
         (void)call_bin(args,b_ps);
