@@ -116,13 +116,8 @@ void del_NL(char* ori){
   //  return nl_ptr;
 }
 
-
-int main (int argc, char *argv[]){
-  while (1){
-    fprintf(stdout,"mysh>");
-    char input[513]={0};
-    if (NULL != fgets(input,512,stdin)){
-      del_NL(input);
+void handler (char* input){
+     del_NL(input);
 
       char* token = strtok(input, " ");
       char** s_args=(char **)calloc(512,sizeof(char*));
@@ -142,7 +137,7 @@ int main (int argc, char *argv[]){
       args=s_args;
       //if user just enter "\n"
       if (0 == arg_num){
-        continue;
+	  return;
       }
       else if (0 == strcmp(*args, "exit")){
 	exit(0);
@@ -179,12 +174,59 @@ int main (int argc, char *argv[]){
       }
       free(s_args);
       close_redirect(redirect);
-    } else {
-      //sth wrong with reading in input
-      char error_message[30] = "An error has occurred\n";
-      write(STDERR_FILENO, error_message, strlen(error_message));
+}
+
+
+
+int main (int argc, char *argv[]){
+    int batch_mode = 0;
+    char* filename;
+    int fd;
+    char input[513]={0};
+   
+    if(argc > 2)
+	print_error();
+    if(argc == 2){
+	batch_mode = 1;
+        filename = argv[1];
     }
-  }
+    
+    if(batch_mode == 1){
+	fd = open(filename,O_RDONLY);
+	if (fd < 0){
+	    print_error();
+	}
+    
+    }
+    
+    while (1){
+	int rc;
+	if(batch_mode == 1){
+	    rc = read(fd,&input,sizeof(input));
+	    if(rc < 0)
+		print_error();
+	    if(rc == 0){
+		exit(1);
+	    }
+	    handler(input);
+	}
+	else{
+	    fprintf(stdout,"mysh>");
+	    if (NULL != fgets(input,512,stdin)){
+		handler(input);
+	    } else {
+		//sth wrong with reading in input
+		print_error();
+	    }
+	}
+    }
+
+    if(batch_mode == 1)
+	(void) close(fd);
+
+    return 0;
+	
+    
 }
 
 
