@@ -193,32 +193,32 @@ void handler (char* input){
 
 int main (int argc, char *argv[]){
     int batch_mode = 0;
-    char* filename;
-    int fd;
+    FILE* fd;
     char input[513]={0};
    
     if(argc > 2)
 	print_error();
     if(argc == 2){
 	batch_mode = 1;
-        filename = argv[1];
+        //strcpy(filename,argv[1]);
     }
     
     if(batch_mode == 1){
-	fd = open(filename,O_RDONLY);
-	if (fd < 0){
-	    print_error();
+	fd = fopen(argv[1],"r");
+	if (fd == NULL){
+	    if(ferror(fd) != 0)
+		print_error();
+	    else
+		exit(1);
 	}
     
     }
     
     while (1){
-	int rc;
+	char* rc;
 	if(batch_mode == 1){
-	    rc = read(fd,&input,sizeof(input));
-	    if(rc < 0)
-		print_error();
-	    if(rc == 0){
+	    rc = fgets(input,512,fd);
+	    if(rc  == NULL){
 		exit(1);
 	    }
 	    handler(input);
@@ -235,7 +235,7 @@ int main (int argc, char *argv[]){
     }
 
     if(batch_mode == 1)
-	(void) close(fd);
+	fclose(fd);
 
     return 0;
 	
