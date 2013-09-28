@@ -59,42 +59,38 @@ void call_bin(char ** input_ptr, int b_ps){
   }
 }
 
-/*check whether there is redict simple in the input.
+
+/*check whether there is redict symbol in the input.
   if do, then strip off the file name redirected into
-  and redirect stdout, return 1
+  and redirect stdout, return 1. If no redirect symbol, return 0
+  if the input is "", then return -1;
 */
-int check_redict(char** input, int* arg_num_ptr){
-  int offset=0;
-  int red_s_num=0;
-  char out_file[513]={0};
-  int find_outfile=0;
-  //record the offset to get rid of 
-  int red_s_offset=-1;
-  while (NULL != *(input+offset)){
-    if ((0==find_outfile) && (1 == red_s_num)){
-      strcpy(out_file,*(input+offset));
-      find_outfile=1;
-      red_s_offset=offset-1;
-    }
-    if (0==strcmp(*(input+offset),">")){
-      red_s_num++;
-    }
-    offset++;
+int check_redict(char * line_ptr){
+  char * token = strtok(line_ptr,">");
+
+  int arg_num=0;
+  char * outputFile;
+  while (NULL != token ){
+    arg_num++;
+    outputFile=token;
+    //    strcpy(outputFile,token);
+    token=strtok(NULL,">");
   }
-  if (1 == red_s_num){
-    //redirect. Do we overwrite or append?
-    freopen(out_file, "w", stdout);
-    *(input+red_s_offset)='\0';
-    *arg_num_ptr = *arg_num_ptr-2;
+
+  if (1 == arg_num){ // no such token
+    return 0;
+  } else if (2 == arg_num){
+    freopen(outputFile, "w", stdout);
+    outputFile='\0';
     return 1;
-    //    close(STDOUT_FILENO);
-    //    int fd=open(out_file, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
-  } else if ( 1 < red_s_num ){
-    //more than one ">"
+  } else if (0 == arg_num){
+    return 0;
+  } else {
     print_error();
+    return -1;
   }
-  return 0;
 }
+
 
 void close_redirect(int redirect){
   //forcefullly redirect everything onto the console screen
@@ -121,6 +117,12 @@ void del_NL(char* ori){
 
 void handler (char* input){
     del_NL(input);
+
+    //check redirect
+    const int redirect=check_redict(input);
+    if (-1 == redirect){ // if only "\n" is entered
+      return;
+    }
     char* token = strtok(input, " ");
     char** s_args=(char **)calloc(512,sizeof(char*));
     char** args=s_args;
@@ -131,17 +133,12 @@ void handler (char* input){
         arg_num++;
 	token=strtok(NULL," ");
     }
-
+    
     const int b_ps=check_ps(s_args,&arg_num);
-    const int redirect=check_redict(s_args,&arg_num);
 
     //handle build-in
     args=s_args;
-    //if user just enter "\n"
-    if (0 == arg_num){
-	return;
-    }
-    else if (0 == strcmp(*args, "exit")){
+    if (0 == strcmp(*args, "exit")){
 	exit(0);
     } else if (0 == strcmp (*args, "cd")){
 	//?????? how to handle more than 1 arguement is passed in? error or ignore?
