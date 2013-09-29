@@ -5,58 +5,62 @@
 # include <stdlib.h>
 # include <sys/wait.h>
 # include <fcntl.h>
+# include <errno.h>
+# include <sys/types.h>
 
 
-void del_NL(char* input);
+
 
 void print_error(){
-  char error_message[30] = "An error has occurred\n";
-  write(STDERR_FILENO, error_message, strlen(error_message));
+    char error_message[30] = "An error has occurred\n";
+    write(STDERR_FILENO, error_message, strlen(error_message));
 }
 
 /* check whether we are starting a new process*/
-int check_ps(char ** input_ptr, int* arg_num_ptr){
-  if ( 1 <= *arg_num_ptr){
-    char * tmp = *(input_ptr + *arg_num_ptr -1);
-    if (0 == strcmp(tmp, "&")){
-      //?????????
-      //the following statement doesn't chagne *(input_ptr + argnum -1) to '\0'
-      //    *tmp = '\0';
-      *(input_ptr + *arg_num_ptr -1)='\0';
-      (*arg_num_ptr)--;
-      return 1;
+int check_ps(char *input){
+    char* cptr;
+    if ((cptr= strstr(input, "&")) != NULL){
+	*cptr = '\0';
+	return 1;
     } else
-      return 0;
-  } else {
-    return 0;
-  }
-}
+	return 0;
+} 
+
 
 /*create a new process and call the binary*/
-void call_bin(char ** input_ptr, int b_ps){
-  char* bin_name_ptr;
-  bin_name_ptr=*(input_ptr);
-  //  int separate_ps= check_ps(input_ptr,arg_num);
-  int rc=fork();
-  //  printf("created child process id: %d\n",rc);
-  if ( 0 ==rc){
-    //child execute
-    int result=execvp(bin_name_ptr,input_ptr);
-    if (-1 == result){
-      print_error();
-      exit(1);
+void call_bin(char ** input_ptr, int b_ps,int redirect,char** outputFile){
+    char* bin_name_ptr;
+    bin_name_ptr=*(input_ptr);
+    //  int separate_ps= check_ps(input_ptr,arg_num);
+    int rc=fork();
+    //  printf("created child process id: %d\n",rc);
+  
+
+    if ( 0 ==rc){
+	//child execute
+	if(redirect == 1){
+	    if(NULL == freopen(*outputFile, "w", stdout)){
+		print_error();
+		return;
+	    }
+	    outputFile='\0';
+	} 
+	int result=execvp(bin_name_ptr,input_ptr);
+	if (-1 == result){
+	    print_error();
+	    exit(0);
+	}
+    } else if ( 0 < rc) {
+	//parent execute
+	if (1 != b_ps){
+	    //use waitpid to wait for the particular process just created
+	    (void)waitpid(rc,NULL,0);
+	    //printf("waited children pid: %d\n",c_pid);
+	}
+    } else {
+	char error_message[30] = "An error has occurred\n";
+	write(STDERR_FILENO, error_message, strlen(error_message));
     }
-  } else if ( 0 < rc) {
-    //parent execute
-    if (1 != b_ps){
-      //use waitpid to wait for the particular process just created
-      (void)waitpid(rc,NULL,0);
-      //printf("waited children pid: %d\n",c_pid);
-    }
-  } else {
-    char error_message[30] = "An error has occurred\n";
-    write(STDERR_FILENO, error_message, strlen(error_message));
-  }
 }
 
 
@@ -65,63 +69,100 @@ void call_bin(char ** input_ptr, int b_ps){
   and redirect stdout, return 1. If no redirect symbol, return 0
   if the input is "", then return -1;
 */
-int check_redict(char * line_ptr){
-  char * token = strtok(line_ptr,">");
+int check_redict(char * line_ptr, char** outputFile){
+    char * token = strtok(line_ptr,">");
 
-  int arg_num=0;
-  char * outputFile;
-  while (NULL != token ){
-    arg_num++;
-    outputFile=token;
-    //    strcpy(outputFile,token);
-    token=strtok(NULL,">");
-  }
+    int arg_num=0;
+    while (NULL != token ){
+	arg_num++;
+	*outputFile=token;
+	//    strcpy(outputFile,token);
+	token=strtok(NULL,">");
+    }
+    
+    
 
-  if (1 == arg_num){ // no such token
-    return 0;
-  } else if (2 == arg_num){
-    freopen(outputFile, "w", stdout);
-    outputFile='\0';
-    return 1;
-  } else if (0 == arg_num){
-    return 0;
-  } else {
-    print_error();
-    return -1;
-  }
+    if (1 == arg_num){ // no such token
+	return 0;
+    } else if (2 == arg_num){
+	char* whitespaceTest = strtok(*outputFile," ");
+	int whitespace_arg = 0;
+	while(NULL != whitespaceTest){
+	    whitespace_arg++;
+	    whitespaceTest=strtok(NULL," ");
+	}
+    
+	if(whitespace_arg != 1){
+	    print_error();
+	    return -1;
+	}
+	return 1;
+    } else if (0 == arg_num){
+	return -1;
+    } else {
+	print_error();
+	return -1;
+    }
 }
 
 
 void close_redirect(int redirect){
-  //forcefullly redirect everything onto the console screen
-  if (1== redirect){
-    freopen ("/dev/tty", "a+", stdout);
-  }
+    //forcefullly redirect everything onto the console screen
+    if (1== redirect){
+	freopen ("/dev/tty", "a+", stdout);
+    }
 }
 
 /*delete the new line character at the end of string */
-void del_NL(char* ori){
-  //get rid of the final \n mark
-  char* lp;
-  lp=ori;
-  char* nl_ptr=(char*)(lp+strlen(lp)-1);
-  if (0  != strcmp(nl_ptr,"\n")){
-    print_error();
-  } else {
-    *nl_ptr='\0';
-    //strncpy(nl_ptr,"\0",1);
-  }
-  //  return nl_ptr;
+int del_NL(char* ori){
+    //get rid of the final \n mark
+    char* lp;
+    lp=ori;
+    char* nl_ptr=(char*)(lp+strlen(lp)-1);
+    if (0  != strcmp(nl_ptr,"\n")){
+	return -1;
+    } else {
+	*nl_ptr='\0';
+	return 0;
+    }
+    //  return nl_ptr;
+}
+
+void check_python(char **input){
+    char *temp = (char *)malloc(strlen(*input));
+    strcpy(temp,*input);
+    char *token = strtok(*input, " ");
+    if(token != NULL){
+	if (0 == strcmp(token+strlen(token)-3,".py")){
+	    *input = (char *)malloc(strlen(temp)+7);
+	    strcpy(*input,"python ");
+	    strcpy((*input+7),temp);
+	}
+	else{
+	    strcpy(*input,temp);
+	}
+		
+	    
+	
+    }
+    free(temp);
+
 }
 
 
-void handler (char* input){
-    del_NL(input);
-
+int handler (char* input){
+    int oversize = del_NL(input);
+    //if the input is oversized
+    if( oversize < 0){
+	return -1;
+    }
+    check_python(&input);
+    char *outputFile = "/no/such/file";
+    const int b_ps=check_ps(input);
     //check redirect
-    const int redirect=check_redict(input);
+    const int redirect=check_redict(input,&outputFile);
     if (-1 == redirect){ // if only "\n" is entered
-      return;
+	return 0;
     }
     char* token = strtok(input, " ");
     char** s_args=(char **)calloc(512,sizeof(char*));
@@ -134,56 +175,75 @@ void handler (char* input){
 	token=strtok(NULL," ");
     }
     
-    const int b_ps=check_ps(s_args,&arg_num);
+    
 
     //handle build-in
     args=s_args;
     if (0 == strcmp(*args, "exit")){
+	if(arg_num != 1){
+	    print_error();
+	    return 0;
+	}
 	exit(0);
-    } else if (0 == strcmp (*args, "cd")){
+    } 
+    else if (0 == strcmp (*args, "cd")){
 	//?????? how to handle more than 1 arguement is passed in? error or ignore?
         const char* path=NULL;
 	if (1 == arg_num){
 	    path=getenv("HOME");
-	} else {
+	} 
+	else if (2 == arg_num){
 	    path=*(args+1);
         }
+	else{
+	    print_error();
+	    return 0;
+	}
+
         if (0 != chdir(path)){
 	    //sth wrong with reading in input
-	    char error_message[30] = "An error has occurred\n";
-	    write(STDERR_FILENO, error_message, strlen(error_message));
+	    print_error();
+	    return 0;
         }
-    } else if (0 == strcmp (*args, "pwd")){
+    } 
+    else if (0 == strcmp (*args, "pwd")){
+	if(arg_num != 1){
+	    print_error();
+	    return 0;
+	}
 	char* c_wd=(char *)malloc(517); // ????? when passed in as getcwd(c_wd,sizeof(c_wd))), a NULL is returned?
 	c_wd=getcwd(NULL,0);
 	if (NULL == c_wd){
 	    //sth wrong with reading in input
-	    char error_message[30] = "An error has occurred\n";
-	    write(STDERR_FILENO, error_message, strlen(error_message));
-	} else {
-	    fprintf(stdout,"%s\n",c_wd);
+	    print_error();
+	    return 0;
+	} 
+	else {
+	    write(STDOUT_FILENO,c_wd,strlen(c_wd));
+	    char *newline = "\n";
+	    write(STDOUT_FILENO,newline,strlen(newline));
 	}
         free(c_wd);
-    } else if (0 == strcmp (*args, "wait")){
-	//???????????? handle status of waiting for children process???
-	(void) wait(NULL);
-    } else if (0 == strcmp(*args+strlen(*args)-3,".py")){ // fun feature
-        int offset=arg_num-1;
-        char extraSpace[strlen(*(args+offset))];
-        //allocate space for "python" string
-        *(args + arg_num) = &extraSpace[0];
-        for (;offset>=0;offset--){
-	    strcpy(*(args+offset+1),*(args+offset));
-        }
-        //add "python in"
-        strcpy(*args,"python");
-        (void)call_bin(args,b_ps);
-    } else {
+    } 
+    else if (0 == strcmp (*args, "wait")){
+	//int pid;
+	if(arg_num != 1){
+	    print_error();
+	    return 0;
+	}
+	while (waitpid(-1, NULL, 0)) {
+	    if (errno == ECHILD) {
+		break;
+	    }
+	}
+	
+    } 
+    else {
         //hanlde non-build in. Calling program binaries
-        (void)call_bin(args,b_ps);
+        (void)call_bin(args,b_ps,redirect,&outputFile);
     }
     free(s_args);
-    close_redirect(redirect);
+    return 0;
 }
 
 
@@ -191,7 +251,8 @@ void handler (char* input){
 int main (int argc, char *argv[]){
     int batch_mode = 0;
     FILE* fd;
-    char input[513]={0};
+    char input[515]={0};
+    int oversize;
    
     if(argc > 2)
 	print_error();
@@ -205,8 +266,7 @@ int main (int argc, char *argv[]){
 	if (fd == NULL){
 	    if(ferror(fd) != 0)
 		print_error();
-	    else
-		exit(1);
+	    exit(0);
 	}
     
     }
@@ -214,19 +274,21 @@ int main (int argc, char *argv[]){
     while (1){
 	char* rc;
 	if(batch_mode == 1){
-	    rc = fgets(input,512,fd);
+	    rc = fgets(input,514,fd);
 	    if(rc  == NULL){
-		exit(1);
+		exit(0);
 	    }
-	    handler(input);
+	    if(0 != strcmp(input,"\n")){
+		write(STDOUT_FILENO,input,strlen(input));
+	    }
+	    oversize = handler(input);
 	}
 	else{
-	    fprintf(stdout,"mysh>");
-	    if (NULL != fgets(input,512,stdin)){
-		handler(input);
+	    write(STDOUT_FILENO,"mysh> ",strlen("mysh> "));
+	    if (NULL != fgets(input,514,stdin)){
+		oversize = handler(input);
 	    } else {
-		//sth wrong with reading in input
-		print_error();
+		exit(0);
 	    }
 	}
     }
