@@ -174,12 +174,18 @@ void handler (char* input){
     char** s_args=(char **)calloc(512,sizeof(char*));//s_args hold the start point of array of arguments
     char** args=s_args;
     int arg_num=0;//arg_num records the number of arguments
+    
+    if (token == NULL){ //if all white space was entered, return to the main loop
+	return;
+    }
+
     while (token != NULL){
 	*args = token;
 	args++;
         arg_num++;
 	token=strtok(NULL," ");
     }
+    
     
     
 
